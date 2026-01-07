@@ -57,7 +57,8 @@ const App: React.FC = () => {
         setSaveStatus('saved');
         setTimeout(() => setSaveStatus('idle'), 2000);
       } catch (error) {
-        alert("保存に失敗しました。");
+        console.error("Storage error:", error);
+        alert("【エラー】保存容量がいっぱいです！\n\nブラウザの制限によりこれ以上保存できません。右上のツールメニューから「バックアップを保存」してPC等に退避させるか、不要な画像を削除してください。");
         setSaveStatus('idle');
       }
     }, 400);

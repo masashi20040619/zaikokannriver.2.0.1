@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Prize, PrizeCategory, Manufacturer } from '../types';
-// Fix: Import PlusIcon which was being used in the component but not imported.
 import PlusIcon from './icons/PlusIcon';
 
 interface PrizeFormModalProps {
@@ -19,6 +18,7 @@ const PrizeFormModal: React.FC<PrizeFormModalProps> = ({ isOpen, onClose, onSave
   const [quantity, setQuantity] = useState(1);
   const [acquisitionDate, setAcquisitionDate] = useState('');
   const [photo, setPhoto] = useState('');
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
   const [notes, setNotes] = useState('');
   const [category, setCategory] = useState<PrizeCategory>('その他');
   const [manufacturer, setManufacturer] = useState<Manufacturer>('指定なし');
@@ -37,9 +37,45 @@ const PrizeFormModal: React.FC<PrizeFormModalProps> = ({ isOpen, onClose, onSave
     }
   }, [isOpen, prizeToEdit]);
 
+  // Image compression logic
+  const resizeImage = (base64Str: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = base64Str;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 600;
+        const MAX_HEIGHT = 600;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        
+        // Compress to JPEG with 0.7 quality
+        const resizedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+        resolve(resizedBase64);
+      };
+    });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || isProcessingImage) return;
 
     const prizeData: Prize = {
       id: prizeToEdit?.id || Date.now().toString(),
@@ -55,12 +91,23 @@ const PrizeFormModal: React.FC<PrizeFormModalProps> = ({ isOpen, onClose, onSave
     onClose();
   };
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
+      setIsProcessingImage(true);
       const file = e.target.files[0];
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhoto(reader.result as string);
+      
+      reader.onloadend = async () => {
+        const base64 = reader.result as string;
+        try {
+          const compressed = await resizeImage(base64);
+          setPhoto(compressed);
+        } catch (err) {
+          console.error("Image processing failed", err);
+          setPhoto(base64); // Fallback to original if compression fails
+        } finally {
+          setIsProcessingImage(false);
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -185,9 +232,11 @@ const PrizeFormModal: React.FC<PrizeFormModalProps> = ({ isOpen, onClose, onSave
           </div>
 
           <div>
-            <label className="block text-xs font-black uppercase tracking-widest text-slate-500 mb-1.5 ml-1">写真</label>
+            <label className="block text-xs font-black uppercase tracking-widest text-slate-500 mb-1.5 ml-1">
+              写真 {isProcessingImage && <span className="text-indigo-500 normal-case font-bold animate-pulse ml-2">圧縮中...</span>}
+            </label>
             <div className="flex gap-4 items-center">
-              <label className="cursor-pointer group flex-shrink-0">
+              <label className={`cursor-pointer group flex-shrink-0 ${isProcessingImage ? 'opacity-50 pointer-events-none' : ''}`}>
                 <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-700/30 group-hover:border-indigo-400 transition-all">
                   <PlusIcon className="w-8 h-8 text-slate-300 group-hover:text-indigo-400" />
                   <span className="text-[10px] font-bold text-slate-400 mt-1 uppercase">撮る・選ぶ</span>
@@ -238,9 +287,10 @@ const PrizeFormModal: React.FC<PrizeFormModalProps> = ({ isOpen, onClose, onSave
             </button>
             <button
               type="submit"
-              className="flex-[2] py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-500/30 transition-all transform active:scale-[0.98]"
+              disabled={isProcessingImage}
+              className={`flex-[2] py-4 text-white font-black rounded-2xl shadow-xl transition-all transform active:scale-[0.98] ${isProcessingImage ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/30'}`}
             >
-              リストに追加
+              {prizeToEdit ? '更新する' : 'リストに追加'}
             </button>
           </div>
         </form>
